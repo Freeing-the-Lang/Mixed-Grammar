@@ -1,0 +1,6 @@
+{
+    "keywords": ["var", "return"],
+    "assignment": "=",
+    "call": "call",
+    "function": "func"
+}
