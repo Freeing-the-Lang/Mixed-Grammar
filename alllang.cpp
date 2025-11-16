@@ -5,7 +5,7 @@
 #include <sstream>
 #include <fstream>
 #include <nlohmann/json.hpp>
-
+#include <variant>
 using json = nlohmann::json;
 
 //////////////////////////////////////////////////////////////////////
