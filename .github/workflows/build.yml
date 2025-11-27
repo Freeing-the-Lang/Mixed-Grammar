@@ -16,6 +16,7 @@ jobs:
       fail-fast: false
 
     steps:
+
       # ------------------------------------------------
       # 1. Checkout
       # ------------------------------------------------
@@ -24,7 +25,7 @@ jobs:
 
 
       # ------------------------------------------------
-      # 2. Install g++ + json
+      # 2. Install g++ + json lib deps
       # ------------------------------------------------
 
       # Linux
@@ -32,14 +33,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ nlohmann-json3-dev
+          sudo apt-get install -y g++ curl unzip
 
       # macOS
       - name: Install deps (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install gcc nlohmann-json
+          brew install gcc curl unzip
 
       # Windows
       - name: Install deps (Windows)
@@ -47,42 +48,24 @@ jobs:
         shell: powershell
         run: |
           choco install mingw --version=12.2.0 -y
+          choco install curl -y
+          choco install unzip -y
           echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
 
 
       # ------------------------------------------------
-      # 3. json.hpp 확인
+      # 3. Download json.hpp automatically
       # ------------------------------------------------
-
-      # Linux + macOS
-      - name: Check json.hpp (Unix)
-        if: runner.os != 'Windows'
+      - name: Download json.hpp (Auto)
         run: |
-          if [ ! -f "json.hpp" ]; then
-            echo "❌ json.hpp not found"
-            exit 1
-          else
-            echo "json.hpp OK"
-          fi
-
-      # Windows
-      - name: Check json.hpp (Windows)
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          if (-Not (Test-Path "json.hpp")) {
-            Write-Host "❌ json.hpp missing"
-            exit 1
-          } else {
-            Write-Host "json.hpp OK"
-          }
+          echo "Downloading json.hpp..."
+          curl -L -o json.hpp https://github.com/nlohmann/json/releases/latest/download/json.hpp
 
 
       # ------------------------------------------------
       # 4. Build AllLang
       # ------------------------------------------------
-
-      - name: Build AllLang (g++)
+      - name: Build AllLang
         shell: bash
         run: |
           echo "Compiling AllLang..."
@@ -90,7 +73,7 @@ jobs:
 
 
       # ------------------------------------------------
-      # 5. Run
+      # 5. Run AllLang
       # ------------------------------------------------
 
       - name: Run AllLang (Linux/macOS)
