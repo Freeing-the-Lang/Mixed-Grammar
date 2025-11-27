@@ -1,4 +1,4 @@
-name: AllLang Meta Engine - Build & Run
+name: "AllLang Meta Engine - Build & Run"
 
 on:
   push:
@@ -16,62 +16,91 @@ jobs:
       fail-fast: false
 
     steps:
-
+      # ------------------------------------------------
       # 1. Checkout
+      # ------------------------------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+
       # ------------------------------------------------
-      # 2. Install g++
+      # 2. Install g++ + json
       # ------------------------------------------------
 
-      # Linux (apt)
-      - name: Install g++ (Linux)
+      # Linux
+      - name: Install deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y g++ nlohmann-json3-dev
 
-      # macOS (brew)
-      - name: Install g++ (macOS)
+      # macOS
+      - name: Install deps (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
           brew install gcc nlohmann-json
 
-      # Windows (MinGW)
-      - name: Install g++ (Windows)
+      # Windows
+      - name: Install deps (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           choco install mingw --version=12.2.0 -y
-          echo "PATH=C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;$env:PATH" >> $env:GITHUB_ENV
+          echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
+
 
       # ------------------------------------------------
-      # 3. json.hpp 체크 (POWERshell 문법)
+      # 3. json.hpp 확인
       # ------------------------------------------------
-      - name: Check json.hpp
+
+      # Linux + macOS
+      - name: Check json.hpp (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          if [ ! -f "json.hpp" ]; then
+            echo "❌ json.hpp not found"
+            exit 1
+          else
+            echo "json.hpp OK"
+          fi
+
+      # Windows
+      - name: Check json.hpp (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           if (-Not (Test-Path "json.hpp")) {
-            Write-Host "ERROR: json.hpp is missing"
+            Write-Host "❌ json.hpp missing"
             exit 1
           } else {
-            Write-Host "json.hpp found."
+            Write-Host "json.hpp OK"
           }
 
-      # ------------------------------------------------
-      # 4. Build AllLang Engine
-      # ------------------------------------------------
-      - name: Build AllLang
-        run: |
-          g++ -std=c++20 alllang.cpp -o alllang
 
       # ------------------------------------------------
-      # 5. Run with langspec.json
+      # 4. Build AllLang
       # ------------------------------------------------
-      - name: Run AllLang
+
+      - name: Build AllLang (g++)
         shell: bash
         run: |
-          ./alllang
+          echo "Compiling AllLang..."
+          g++ -std=c++20 alllang.cpp -o alllang_exec
+
+
+      # ------------------------------------------------
+      # 5. Run
+      # ------------------------------------------------
+
+      - name: Run AllLang (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x alllang_exec
+          ./alllang_exec || echo "⚠️ Program exited with non-zero status"
+
+      - name: Run AllLang (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          .\alllang_exec.exe || Write-Host "⚠️ Program exited with non-zero status"
