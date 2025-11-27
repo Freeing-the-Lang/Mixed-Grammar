@@ -25,7 +25,7 @@ jobs:
 
 
       # ------------------------------------------------
-      # 2. Install g++ + json lib deps
+      # 2. Install g++ + curl + unzip
       # ------------------------------------------------
 
       # Linux
@@ -50,13 +50,14 @@ jobs:
           choco install mingw --version=12.2.0 -y
           choco install curl -y
           choco install unzip -y
+          # Add MinGW to PATH
           echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
 
 
       # ------------------------------------------------
       # 3. Download json.hpp automatically
       # ------------------------------------------------
-      - name: Download json.hpp (Auto)
+      - name: Download json.hpp
         run: |
           echo "Downloading json.hpp..."
           curl -L -o json.hpp https://github.com/nlohmann/json/releases/latest/download/json.hpp
@@ -73,17 +74,23 @@ jobs:
 
 
       # ------------------------------------------------
-      # 5. Run AllLang
+      # 5. Run AllLang (Linux / macOS)
       # ------------------------------------------------
-
       - name: Run AllLang (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
           chmod +x alllang_exec
           ./alllang_exec || echo "⚠️ Program exited with non-zero status"
 
+
+      # ------------------------------------------------
+      # 6. Run AllLang (Windows)
+      # ------------------------------------------------
       - name: Run AllLang (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          .\alllang_exec.exe || Write-Host "⚠️ Program exited with non-zero status"
+          .\alllang_exec.exe
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "⚠️ Program exited with non-zero status"
+          }
