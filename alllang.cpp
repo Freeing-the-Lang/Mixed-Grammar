@@ -4,36 +4,42 @@
 #include <unordered_map>
 #include <sstream>
 #include <fstream>
-#include <nlohmann/json.hpp>
+#include "json.hpp"   // ← 수정됨
 #include <variant>
 using json = nlohmann::json;
 
 //////////////////////////////////////////////////////////////////////
-// 1) 언어 스펙 입력 (키워드/문법/패턴 외부 JSON으로 로딩)
+// 1) LanguageSpec
 //////////////////////////////////////////////////////////////////////
 
 struct LanguageSpec {
     std::vector<std::string> keywords;
-    std::string assignment;   // 예: "="
-    std::string call_syntax;  // 예: "call"
-    std::string func_syntax;  // 예: "func"
+    std::string assignment;
+    std::string call_syntax;
+    std::string func_syntax;
 };
 
 LanguageSpec loadSpec(const std::string& filename) {
     std::ifstream f(filename);
-    json j; f >> j;
+    if (!f.is_open()) {
+        std::cerr << "ERROR: Cannot open " << filename << "\n";
+        exit(1);
+    }
+
+    json j; 
+    f >> j;
 
     LanguageSpec spec;
-    spec.keywords   = j["keywords"].get<std::vector<std::string>>();
-    spec.assignment = j["assignment"];
-    spec.call_syntax= j["call"];
-    spec.func_syntax= j["function"];
+    spec.keywords    = j["keywords"].get<std::vector<std::string>>();
+    spec.assignment  = j["assignment"].get<std::string>();
+    spec.call_syntax = j["call"].get<std::string>();
+    spec.func_syntax = j["function"].get<std::string>();
 
     return spec;
 }
 
 //////////////////////////////////////////////////////////////////////
-// 2) 토크나이저 (언어 스펙 기반)
+// 2) Tokenizer
 //////////////////////////////////////////////////////////////////////
 
 std::vector<std::string> tokenize(std::string_view src) {
@@ -52,11 +58,12 @@ std::vector<std::string> tokenize(std::string_view src) {
         }
     }
     if (!cur.empty()) t.push_back(cur);
+
     return t;
 }
 
 //////////////////////////////////////////////////////////////////////
-// 3) AST (고정 구조지만 문법 요소는 외부에서 결정)
+// 3) AST
 //////////////////////////////////////////////////////////////////////
 
 struct VarNode { std::string name; std::string expr; };
@@ -64,51 +71,44 @@ struct CallNode{ std::string name; std::vector<std::string> args; };
 struct FuncNode{ std::string name; std::vector<std::variant<VarNode,CallNode>> body; };
 
 //////////////////////////////////////////////////////////////////////
-// 4) 파서: 동적 키워드 기반
+// 4) Parser (spec 기반)
 //////////////////////////////////////////////////////////////////////
 
 FuncNode parse(const std::vector<std::string>& t, const LanguageSpec& spec) {
     FuncNode fn;
-    fn.name = t[1]; // fn / def / func 여부와 상관 없음 (입력 스펙에서 온 것)
+    
+    // func <name> ( ) {
+    //             ^ index 1
+    fn.name = t[1];
 
-    // 본문 탐색
     size_t start=0, end=t.size();
+
     for (size_t i=0;i<t.size();i++)
         if (t[i]=="{") start=i+1;
 
-    for (size_t i=start;i<t.size();i++)
-        if (t[i]=="}") end=i;
+    for (size_t i=0;i<t.size();i++)
+        if (t[i]=="}") { end=i; break; }
 
-    // 동적 키워드 기반 파싱
     for (size_t i=start;i<end;i++) {
 
-        // 변수 선언 키워드: spec에서 가져옴
-        for (auto& kw : spec.keywords) {
-            if (t[i]==kw && kw=="var") {
-                VarNode v;
-                v.name = t[i+1];
-                v.expr = t[i+3];
-                fn.body.push_back(v);
-                i+=3;
-            }
+        // var x = 15
+        if (t[i]=="var") {
+            VarNode v;
+            v.name = t[i+1];
+            v.expr = t[i+3];
+            fn.body.push_back(v);
+            i+=3;
+            continue;
         }
 
-        // 함수 호출 키워드도 spec.call_syntax 로 받음
+        // call print x
         if (t[i]==spec.call_syntax) {
             CallNode c;
             c.name = t[i+1];
             c.args = { t[i+2] };
             fn.body.push_back(c);
             i+=2;
-        }
-
-        // print 같은 사용자 정의 호출도 JSON으로 받아 처리 가능
-        if (t[i]=="print") {
-            CallNode c;
-            c.name="print";
-            c.args={ t[i+2] };
-            fn.body.push_back(c);
-            i+=2;
+            continue;
         }
     }
 
@@ -116,15 +116,15 @@ FuncNode parse(const std::vector<std::string>& t, const LanguageSpec& spec) {
 }
 
 //////////////////////////////////////////////////////////////////////
-// 5) SpongeLang IR 생성 (고정)
+// 5) To IR
 //////////////////////////////////////////////////////////////////////
 
 std::string to_ir(const FuncNode& f, const LanguageSpec& spec) {
     std::string ir;
 
-    ir += spec.func_syntax + std::string(" ") + f.name + " {\n";
+    ir += spec.func_syntax + " " + f.name + " {\n";
 
-    for (auto& s : f.body) {
+    for (auto& node : f.body) {
         std::visit([&](auto&& n){
             using T = std::decay_t<decltype(n)>;
 
@@ -133,11 +133,11 @@ std::string to_ir(const FuncNode& f, const LanguageSpec& spec) {
             }
             else if constexpr (std::is_same_v<T,CallNode>) {
                 ir += "    " + spec.call_syntax + " " + n.name;
-                for (auto& a : n.args) ir += " " + a;
+                for (auto& a: n.args) ir += " " + a;
                 ir += "\n";
             }
 
-        }, s);
+        }, node);
     }
 
     ir += "}\n";
@@ -145,7 +145,7 @@ std::string to_ir(const FuncNode& f, const LanguageSpec& spec) {
 }
 
 //////////////////////////////////////////////////////////////////////
-// 6) SpongeLang VM
+// 6) Simple execution
 //////////////////////////////////////////////////////////////////////
 
 void execute(const std::string& ir) {
@@ -155,11 +155,13 @@ void execute(const std::string& ir) {
 
     while (ss >> w) {
 
-        // 변수 = 값
+        // var assignment
         std::string eq;
-        ss >> eq;
+        if (!(ss >> eq)) break;
+
         if (eq == "=") {
-            int v; ss >> v;
+            int v;
+            ss >> v;
             vars[w]=v;
         }
 
@@ -167,22 +169,24 @@ void execute(const std::string& ir) {
         if (w=="call") {
             std::string name, arg;
             ss >> name >> arg;
-            if (name=="print") std::cout<<vars[arg]<<"\n";
+            if (name=="print") {
+                if (vars.count(arg))
+                    std::cout << vars[arg] << "\n";
+                else
+                    std::cout << "(undefined) " << arg << "\n";
+            }
         }
     }
 }
 
 //////////////////////////////////////////////////////////////////////
-// 7) MAIN – JSON으로 언어 스펙 받기
+// 7) MAIN
 //////////////////////////////////////////////////////////////////////
 
 int main(){
     std::cout << "Loading LanguageSpec...\n";
 
     LanguageSpec spec = loadSpec("langspec.json");
-
-    std::cout << "Loaded keywords:\n";
-    for(auto& k:spec.keywords) std::cout<<" - "<<k<<"\n";
 
     std::string src =
         "func main() { "
